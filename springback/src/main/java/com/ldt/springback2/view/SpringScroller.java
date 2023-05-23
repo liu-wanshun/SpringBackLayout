@@ -23,19 +23,19 @@ public class SpringScroller {
     private double mStartY;
     private double mVelocity;
 
-    public void scrollByFling(float f, float f2, float f3, float f4, float f5, int i, boolean z) {
+    public void scrollByFling(float startX, float endX, float startY, float endY, float velocity, int orientation, boolean z) {
         this.mFinished = false;
         this.mLastStep = false;
-        double d = (double) f;
+        double d = (double) startX;
         this.mStartX = d;
         this.mOriginStartX = d;
-        this.mEndX = (double) f2;
-        double d2 = (double) f3;
+        this.mEndX = (double) endX;
+        double d2 = (double) startY;
         this.mStartY = d2;
         this.mOriginStartY = d2;
         this.mCurrY = (double) ((int) this.mStartY);
-        this.mEndY = (double) f4;
-        double d3 = (double) f5;
+        this.mEndY = (double) endY;
+        double d3 = (double) velocity;
         this.mOriginVelocity = d3;
         this.mVelocity = d3;
         if (Math.abs(this.mVelocity) <= 5000.0d || z) {
@@ -43,7 +43,7 @@ public class SpringScroller {
         } else {
             this.mSpringOperator = new SpringOperator(1.0f, 0.55f);
         }
-        this.mOrientation = i;
+        this.mOrientation = orientation;
         this.mStartTime = AnimationUtils.currentAnimationTimeMillis();
     }
 
@@ -101,7 +101,7 @@ public class SpringScroller {
         if (d2 < d3 && d > d3) {
             return true;
         }
-        int i = (d2 > d3 ? 1 : (d2 == d3 ? 0 : -1));
+        int i = (Double.compare(d2, d3));
         if (i > 0 && d < d3) {
             return true;
         }
@@ -128,7 +128,7 @@ public class SpringScroller {
         this.mFirstStep = 0;
     }
 
-    public void setFirstStep(int i) {
-        this.mFirstStep = i;
+    public void setFirstStep(int firstStep) {
+        this.mFirstStep = firstStep;
     }
 }

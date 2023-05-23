@@ -15,9 +15,9 @@ public class SpringBackLayoutHelper {
     int mTargetScrollOrientation;
     private int mTouchSlop;
 
-    public SpringBackLayoutHelper(ViewGroup viewGroup, int i) {
+    public SpringBackLayoutHelper(ViewGroup viewGroup, int orientation) {
         this.mTarget = viewGroup;
-        this.mTargetScrollOrientation = i;
+        this.mTargetScrollOrientation = orientation;
         this.mTouchSlop = ViewConfiguration.get(viewGroup.getContext()).getScaledTouchSlop();
     }
 
