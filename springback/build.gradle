@@ -1,8 +1,9 @@
 plugins {
     id "com.android.library"
+    id "org.jetbrains.kotlin.android"
 }
 android {
-    namespace "com.ldt.springback"
+    namespace "com.lws.springback"
     defaultConfig {
         consumerProguardFiles "consumer-rules.pro"
     }
@@ -17,10 +18,5 @@ android {
 }
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-
     implementation 'androidx.appcompat:appcompat:1.1.0'
-    testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 }

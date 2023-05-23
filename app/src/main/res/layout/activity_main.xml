@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.ldt.springback2.view.SpringBackLayout
-    android:id="@+id/root"
+<com.lws.springback.view.SpringBackLayout android:id="@+id/root"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    app:scrollableView="@id/recycler_view"
-    tools:context=".MainActivity">
+    app:scrollableView="@id/recycler_view">
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        />
-</com.ldt.springback2.view.SpringBackLayout>
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+</com.lws.springback.view.SpringBackLayout>
