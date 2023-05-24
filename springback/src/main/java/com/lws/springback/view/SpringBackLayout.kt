@@ -15,7 +15,6 @@ import androidx.core.view.NestedScrollingChild3
 import androidx.core.view.NestedScrollingChildHelper
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
-import androidx.core.view.ViewCompat
 import androidx.core.view.ViewCompat.TYPE_TOUCH
 import androidx.core.widget.ListViewCompat
 import androidx.core.widget.NestedScrollView
@@ -32,8 +31,8 @@ class SpringBackLayout @JvmOverloads constructor(
     attributeSet: AttributeSet? = null
 ) : ViewGroup(context, attributeSet), NestedScrollingParent3, NestedScrollingChild3,
     NestedCurrentFling {
-    private var consumeNestFlingCounter: Int
-    private var mActivePointerId: Int
+    private var consumeNestFlingCounter: Int = 0
+    private var mActivePointerId: Int = MotionEvent.INVALID_POINTER_ID
     private val mHelper: SpringBackLayoutHelper
     private var mInitialDownX = 0f
     private var mInitialDownY = 0f
@@ -43,30 +42,32 @@ class SpringBackLayout @JvmOverloads constructor(
     private var mNestedFlingInProgress = false
     private var mNestedScrollAxes = 0
     private var mNestedScrollInProgress = false
-    private val mNestedScrollingChildHelper: NestedScrollingChildHelper
-    private val mNestedScrollingParentHelper: NestedScrollingParentHelper
-    private val mNestedScrollingV2ConsumedCompat: IntArray
-    private val mOnScrollListeners: MutableList<OnScrollListener>
+    private val mNestedScrollingChildHelper: NestedScrollingChildHelper =
+        NestedScrollingChildHelper(this)
+    private val mNestedScrollingParentHelper: NestedScrollingParentHelper =
+        NestedScrollingParentHelper(this)
+    private val mNestedScrollingV2ConsumedCompat: IntArray = IntArray(2)
+    private val mOnScrollListeners: MutableList<OnScrollListener> = mutableListOf()
     private var mOnSpringListener: OnSpringListener? = null
     private var mOriginScrollOrientation: Int
-    private val mParentOffsetInWindow: IntArray
-    private val mParentScrollConsumed: IntArray
+    private val mParentOffsetInWindow: IntArray = IntArray(2)
+    private val mParentScrollConsumed: IntArray = IntArray(2)
     private val mScreenHeight: Int
     private val mScreenWith: Int
     private var mScrollByFling = false
     private var mScrollOrientation = 0
-    private var mScrollState: Int
-    private var mSpringBackEnable: Boolean
+    private var mScrollState: Int = STATE_IDLE
     private var springBackMode: Int
-    private val mSpringScroller: SpringScroller
+    private val mSpringScroller: SpringScroller = SpringScroller()
     private lateinit var mTarget: View
     private val mTargetId: Int
     private var mTotalFlingUnconsumed = 0f
     private var mTotalScrollBottomUnconsumed = 0f
     private var mTotalScrollTopUnconsumed = 0f
-    private val mTouchSlop: Int
+    private val mTouchSlop: Int = ViewConfiguration.get(context).scaledTouchSlop
     private var mVelocityX = 0f
     private var mVelocityY = 0f
+    var springBackEnable: Boolean = true
 
     interface OnScrollListener {
         fun onScrolled(springBackLayout: SpringBackLayout?, dx: Int, dy: Int) {}
@@ -78,17 +79,6 @@ class SpringBackLayout @JvmOverloads constructor(
     }
 
     init {
-        mActivePointerId = -1
-        consumeNestFlingCounter = 0
-        mParentScrollConsumed = IntArray(2)
-        mParentOffsetInWindow = IntArray(2)
-        mNestedScrollingV2ConsumedCompat = IntArray(2)
-        mSpringBackEnable = true
-        mOnScrollListeners = ArrayList()
-        mScrollState = 0
-        mNestedScrollingParentHelper = NestedScrollingParentHelper(this)
-        mNestedScrollingChildHelper = NestedScrollingChildHelper(this)
-        mTouchSlop = ViewConfiguration.get(context).scaledTouchSlop
         val obtainStyledAttributes =
             context.obtainStyledAttributes(attributeSet, R.styleable.SpringBackLayout)
         mTargetId =
@@ -98,7 +88,6 @@ class SpringBackLayout @JvmOverloads constructor(
         springBackMode =
             obtainStyledAttributes.getInt(R.styleable.SpringBackLayout_springBackMode, 3)
         obtainStyledAttributes.recycle()
-        mSpringScroller = SpringScroller()
         mHelper = SpringBackLayoutHelper(this, mOriginScrollOrientation)
         isNestedScrollingEnabled = true
         val displayMetrics = DisplayMetrics()
@@ -107,14 +96,6 @@ class SpringBackLayout @JvmOverloads constructor(
         )
         mScreenWith = displayMetrics.widthPixels
         mScreenHeight = displayMetrics.heightPixels
-    }
-
-    fun setSpringBackEnable(enable: Boolean) {
-        mSpringBackEnable = enable
-    }
-
-    fun springBackEnable(): Boolean {
-        return mSpringBackEnable
     }
 
     fun setScrollOrientation(orientation: Int) {
@@ -165,8 +146,7 @@ class SpringBackLayout @JvmOverloads constructor(
         mTarget.overScrollMode = OVER_SCROLL_NEVER
     }
 
-    /* access modifiers changed from: protected */
-    public override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         val measuredWidth = measuredWidth
         val measuredHeight = measuredHeight
         val paddingLeft = paddingLeft
@@ -181,24 +161,24 @@ class SpringBackLayout @JvmOverloads constructor(
 
     public override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         ensureTarget()
-        val mode = MeasureSpec.getMode(widthMeasureSpec)
-        val mode2 = MeasureSpec.getMode(heightMeasureSpec)
-        var size = MeasureSpec.getSize(widthMeasureSpec)
-        var size2 = MeasureSpec.getSize(heightMeasureSpec)
+        val modeWidth = MeasureSpec.getMode(widthMeasureSpec)
+        val modeHeight = MeasureSpec.getMode(heightMeasureSpec)
+        var sizeWidth = MeasureSpec.getSize(widthMeasureSpec)
+        var sizeHeight = MeasureSpec.getSize(heightMeasureSpec)
         measureChild(mTarget, widthMeasureSpec, heightMeasureSpec)
-        if (size > mTarget.measuredWidth) {
-            size = mTarget.measuredWidth
+        if (sizeWidth > mTarget.measuredWidth) {
+            sizeWidth = mTarget.measuredWidth
         }
-        if (size2 > mTarget.measuredHeight) {
-            size2 = mTarget.measuredHeight
+        if (sizeHeight > mTarget.measuredHeight) {
+            sizeHeight = mTarget.measuredHeight
         }
-        if (mode != 1073741824) {
-            size = mTarget.measuredWidth
+        if (modeWidth != MeasureSpec.EXACTLY) {
+            sizeWidth = mTarget.measuredWidth
         }
-        if (mode2 != 1073741824) {
-            size2 = mTarget.measuredHeight
+        if (modeHeight != MeasureSpec.EXACTLY) {
+            sizeHeight = mTarget.measuredHeight
         }
-        setMeasuredDimension(size, size2)
+        setMeasuredDimension(sizeWidth, sizeHeight)
     }
 
     override fun computeScroll() {
@@ -208,13 +188,12 @@ class SpringBackLayout @JvmOverloads constructor(
             if (!mSpringScroller.isFinished) {
                 postInvalidateOnAnimation()
             } else {
-                dispatchScrollState(0)
+                dispatchScrollState(STATE_IDLE)
             }
         }
     }
 
-    /* access modifiers changed from: protected */
-    public override fun onScrollChanged(
+    override fun onScrollChanged(
         scrollX: Int,
         scrollY: Int,
         oldScrollX: Int,
@@ -230,7 +209,7 @@ class SpringBackLayout @JvmOverloads constructor(
         get() {
             val view = mTarget
             return if (view is ListView) {
-                !ListViewCompat.canScrollList((view as ListView?)!!, -1)
+                !ListViewCompat.canScrollList(view, -1)
             } else !view.canScrollVertically(-1)
         }
 
@@ -280,34 +259,33 @@ class SpringBackLayout @JvmOverloads constructor(
     }
 
     override fun onInterceptTouchEvent(motionEvent: MotionEvent): Boolean {
-        if (!mSpringBackEnable
+        if (!springBackEnable
             || !isEnabled
             || mNestedFlingInProgress
             || mNestedScrollInProgress
-            || Build.VERSION.SDK_INT >= 21
-            && mTarget.isNestedScrollingEnabled
+            || (Build.VERSION.SDK_INT >= 21 && mTarget.isNestedScrollingEnabled)
         ) {
             return false
         }
         val actionMasked = motionEvent.actionMasked
-        if (!mSpringScroller.isFinished && actionMasked == 0) {
+        if (!mSpringScroller.isFinished && actionMasked == MotionEvent.ACTION_DOWN) {
             mSpringScroller.forceStop()
         }
         if (!supportTopSpringBackMode() && !supportBottomSpringBackMode()) {
             return false
         }
-        val i = mOriginScrollOrientation
-        if (i and 4 != 0) {
+        val orientation = mOriginScrollOrientation
+        if (orientation and ANGLE != 0) {
             checkOrientation(motionEvent)
             if (isTargetScrollOrientation(VERTICAL)
                 && mOriginScrollOrientation and HORIZONTAL != 0
-                && scrollX.toFloat() == 0.0f
+                && scrollX == 0
             ) {
                 return false
             }
             if (isTargetScrollOrientation(HORIZONTAL)
                 && mOriginScrollOrientation and VERTICAL != 0
-                && scrollY.toFloat() == 0.0f
+                && scrollY == 0
             ) {
                 return false
             }
@@ -315,7 +293,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 disallowParentInterceptTouchEvent(true)
             }
         } else {
-            mScrollOrientation = i
+            mScrollOrientation = orientation
         }
         if (isTargetScrollOrientation(VERTICAL)) {
             return onVerticalInterceptTouchEvent(motionEvent)
@@ -332,30 +310,11 @@ class SpringBackLayout @JvmOverloads constructor(
     private fun checkOrientation(motionEvent: MotionEvent) {
         mHelper.checkOrientation(motionEvent)
         val actionMasked = motionEvent.actionMasked
-        if (actionMasked != MotionEvent.ACTION_DOWN) {
-            if (actionMasked != MotionEvent.ACTION_UP) {
-                if (actionMasked != MotionEvent.ACTION_MOVE) {
-                    if (actionMasked != MotionEvent.ACTION_CANCEL) {
-                        if (actionMasked == MotionEvent.ACTION_POINTER_UP) {
-                            onSecondaryPointerUp(motionEvent)
-                            return
-                        }
-                        return
-                    }
-                } else if (mScrollOrientation == UNCHECK_ORIENTATION && mHelper.mScrollOrientation != UNCHECK_ORIENTATION) {
-                    mScrollOrientation = mHelper.mScrollOrientation
-                    return
-                } else {
-                    return
-                }
-            }
-            disallowParentInterceptTouchEvent(false)
-            if (mOriginScrollOrientation and VERTICAL != 0) {
-                springBack(VERTICAL)
-            } else {
-                springBack(HORIZONTAL)
-            }
-        } else {
+        if (actionMasked == MotionEvent.ACTION_POINTER_UP) {
+            onSecondaryPointerUp(motionEvent)
+            return
+        }
+        if (actionMasked == MotionEvent.ACTION_DOWN) {
             mInitialDownY = mHelper.mInitialDownY
             mInitialDownX = mHelper.mInitialDownX
             mActivePointerId = mHelper.mActivePointerId
@@ -372,6 +331,25 @@ class SpringBackLayout @JvmOverloads constructor(
                 checkScrollStart(VERTICAL)
             } else {
                 checkScrollStart(HORIZONTAL)
+            }
+        } else {
+            if (actionMasked != MotionEvent.ACTION_UP) {
+                if (actionMasked != MotionEvent.ACTION_MOVE) {
+                    if (actionMasked != MotionEvent.ACTION_CANCEL) {
+                        return
+                    }
+                } else if (mScrollOrientation == UNCHECK_ORIENTATION && mHelper.mScrollOrientation != UNCHECK_ORIENTATION) {
+                    mScrollOrientation = mHelper.mScrollOrientation
+                    return
+                } else {
+                    return
+                }
+            }
+            disallowParentInterceptTouchEvent(false)
+            if (mOriginScrollOrientation and VERTICAL != 0) {
+                springBack(VERTICAL)
+            } else {
+                springBack(HORIZONTAL)
             }
         }
     }
@@ -453,24 +431,23 @@ class SpringBackLayout @JvmOverloads constructor(
             return false
         }
         val actionMasked = motionEvent.actionMasked
-        if (actionMasked != 0) {
-            if (actionMasked != 1) {
-                if (actionMasked == 2) {
-                    val i = mActivePointerId
-                    if (i == -1) {
+        if (actionMasked != MotionEvent.ACTION_DOWN) {
+            if (actionMasked != MotionEvent.ACTION_UP) {
+                if (actionMasked == MotionEvent.ACTION_MOVE) {
+                    if (mActivePointerId == MotionEvent.INVALID_POINTER_ID) {
                         Log.e(TAG, "Got ACTION_MOVE event but don't have an active pointer id.")
                         return false
                     }
-                    val findPointerIndex = motionEvent.findPointerIndex(i)
+                    val findPointerIndex = motionEvent.findPointerIndex(mActivePointerId)
                     if (findPointerIndex < 0) {
                         Log.e(TAG, "Got ACTION_MOVE event but have an invalid active pointer id.")
                         return false
                     }
                     val x = motionEvent.getX(findPointerIndex)
-                    if (isTargetScrollToBottom(1) && isTargetScrollToTop(1)) {
+                    if (isTargetScrollToBottom(HORIZONTAL) && isTargetScrollToTop(HORIZONTAL)) {
                         z = true
                     }
-                    if ((z || !isTargetScrollToTop(1)) && (!z || x <= mInitialDownX)) {
+                    if ((z || !isTargetScrollToTop(HORIZONTAL)) && (!z || x <= mInitialDownX)) {
                         if (mInitialDownX - x > mTouchSlop.toFloat() && !mIsBeingDragged) {
                             mIsBeingDragged = true
                             dispatchScrollState(STATE_DRAGGING)
@@ -488,7 +465,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 }
             }
             mIsBeingDragged = false
-            mActivePointerId = -1
+            mActivePointerId = MotionEvent.INVALID_POINTER_ID
         } else {
             mActivePointerId = motionEvent.getPointerId(0)
             val findPointerIndex2 = motionEvent.findPointerIndex(mActivePointerId)
@@ -507,7 +484,7 @@ class SpringBackLayout @JvmOverloads constructor(
     }
 
     override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-        if (!isEnabled || !mSpringBackEnable) {
+        if (!isEnabled || !springBackEnable) {
             super.requestDisallowInterceptTouchEvent(disallowIntercept)
         }
     }
@@ -529,10 +506,16 @@ class SpringBackLayout @JvmOverloads constructor(
 
     override fun onTouchEvent(motionEvent: MotionEvent): Boolean {
         val actionMasked = motionEvent.actionMasked
-        if (!isEnabled || mNestedFlingInProgress || mNestedScrollInProgress || Build.VERSION.SDK_INT >= 21 && mTarget.isNestedScrollingEnabled) {
+        if (!isEnabled
+            || mNestedFlingInProgress
+            || mNestedScrollInProgress
+            || (Build.VERSION.SDK_INT >= 21 && mTarget.isNestedScrollingEnabled)
+        ) {
             return false
         }
-        if (!mSpringScroller.isFinished && actionMasked == MotionEvent.ACTION_DOWN) {
+        if (!mSpringScroller.isFinished
+            && actionMasked == MotionEvent.ACTION_DOWN
+        ) {
             mSpringScroller.forceStop()
         }
         if (isTargetScrollOrientation(VERTICAL)) {
@@ -558,32 +541,36 @@ class SpringBackLayout @JvmOverloads constructor(
 
     private fun onVerticalTouchEvent(motionEvent: MotionEvent): Boolean {
         val actionMasked = motionEvent.actionMasked
-        if (!isTargetScrollToTop(2) && !isTargetScrollToBottom(2)) {
+        if (!isTargetScrollToTop(VERTICAL) && !isTargetScrollToBottom(VERTICAL)) {
             return false
         }
-        if (isTargetScrollToTop(2) && isTargetScrollToBottom(2)) {
-            return onScrollEvent(motionEvent, actionMasked, 2)
+        if (isTargetScrollToTop(VERTICAL) && isTargetScrollToBottom(VERTICAL)) {
+            return onScrollEvent(motionEvent, actionMasked, VERTICAL)
         }
-        return if (isTargetScrollToBottom(2)) {
-            onScrollUpEvent(motionEvent, actionMasked, 2)
-        } else onScrollDownEvent(motionEvent, actionMasked, 2)
+        return if (isTargetScrollToBottom(VERTICAL)) {
+            onScrollUpEvent(motionEvent, actionMasked, VERTICAL)
+        } else onScrollDownEvent(motionEvent, actionMasked, VERTICAL)
     }
 
-    private fun onScrollEvent(motionEvent: MotionEvent, actionMasked: Int, orientation: Int): Boolean {
+    private fun onScrollEvent(
+        motionEvent: MotionEvent,
+        actionMasked: Int,
+        orientation: Int
+    ): Boolean {
         val f: Float
         val f2: Float
-        val i3: Int
+        val pointerIndex: Int
         if (actionMasked == 0) {
             mActivePointerId = motionEvent.getPointerId(0)
             checkScrollStart(orientation)
-        } else if (actionMasked != 1) {
-            if (actionMasked == 2) {
+        } else if (actionMasked != MotionEvent.ACTION_UP) {
+            if (actionMasked == MotionEvent.ACTION_MOVE) {
                 val findPointerIndex = motionEvent.findPointerIndex(mActivePointerId)
                 if (findPointerIndex < 0) {
                     Log.e(TAG, "Got ACTION_MOVE event but have an invalid active pointer id.")
                     return false
                 } else if (mIsBeingDragged) {
-                    if (orientation == 2) {
+                    if (orientation == VERTICAL) {
                         val y = motionEvent.getY(findPointerIndex)
                         f = sign(y - mInitialMotionY)
                         f2 = obtainSpringBackDistance(y - mInitialMotionY, orientation)
@@ -595,10 +582,10 @@ class SpringBackLayout @JvmOverloads constructor(
                     requestDisallowParentInterceptTouchEvent(true)
                     moveTarget(f * f2, orientation)
                 }
-            } else if (actionMasked == 3) {
+            } else if (actionMasked == MotionEvent.ACTION_CANCEL) {
                 return false
             } else {
-                if (actionMasked == 5) {
+                if (actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
                     val findPointerIndex2 = motionEvent.findPointerIndex(mActivePointerId)
                     if (findPointerIndex2 < 0) {
                         Log.e(
@@ -607,33 +594,33 @@ class SpringBackLayout @JvmOverloads constructor(
                         )
                         return false
                     }
-                    if (orientation == 2) {
+                    if (orientation == VERTICAL) {
                         val y2 = motionEvent.getY(findPointerIndex2) - mInitialDownY
-                        i3 = motionEvent.actionIndex
-                        if (i3 < 0) {
+                        pointerIndex = motionEvent.actionIndex
+                        if (pointerIndex < 0) {
                             Log.e(
                                 TAG,
                                 "Got ACTION_POINTER_DOWN event but have an invalid action index."
                             )
                             return false
                         }
-                        mInitialDownY = motionEvent.getY(i3) - y2
+                        mInitialDownY = motionEvent.getY(pointerIndex) - y2
                         mInitialMotionY = mInitialDownY
                     } else {
                         val x2 = motionEvent.getX(findPointerIndex2) - mInitialDownX
-                        i3 = motionEvent.actionIndex
-                        if (i3 < 0) {
+                        pointerIndex = motionEvent.actionIndex
+                        if (pointerIndex < 0) {
                             Log.e(
                                 TAG,
                                 "Got ACTION_POINTER_DOWN event but have an invalid action index."
                             )
                             return false
                         }
-                        mInitialDownX = motionEvent.getX(i3) - x2
+                        mInitialDownX = motionEvent.getX(pointerIndex) - x2
                         mInitialMotionX = mInitialDownX
                     }
-                    mActivePointerId = motionEvent.getPointerId(i3)
-                } else if (actionMasked == 6) {
+                    mActivePointerId = motionEvent.getPointerId(pointerIndex)
+                } else if (actionMasked == MotionEvent.ACTION_POINTER_UP) {
                     onSecondaryPointerUp(motionEvent)
                 }
             }
@@ -645,7 +632,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 mIsBeingDragged = false
                 springBack(orientation)
             }
-            mActivePointerId = -1
+            mActivePointerId = MotionEvent.INVALID_POINTER_ID
             return false
         }
         return true
@@ -654,7 +641,7 @@ class SpringBackLayout @JvmOverloads constructor(
     private fun checkVerticalScrollStart() {
         if (scrollY != 0) {
             mIsBeingDragged = true
-            val obtainTouchDistance = obtainTouchDistance(abs(scrollY).toFloat(), 2)
+            val obtainTouchDistance = obtainTouchDistance(abs(scrollY).toFloat(), VERTICAL)
             if (scrollY < 0) {
                 mInitialDownY -= obtainTouchDistance
             } else {
@@ -689,19 +676,23 @@ class SpringBackLayout @JvmOverloads constructor(
         mIsBeingDragged = false
     }
 
-    private fun onScrollDownEvent(motionEvent: MotionEvent, actionMasked: Int, orientation: Int): Boolean {
+    private fun onScrollDownEvent(
+        motionEvent: MotionEvent,
+        actionMasked: Int,
+        orientation: Int
+    ): Boolean {
         val f: Float
         val f2: Float
-        val i3: Int
-        if (actionMasked != 0) {
-            if (actionMasked != 1) {
-                if (actionMasked == 2) {
+        val pointerIndex: Int
+        if (actionMasked != MotionEvent.ACTION_DOWN) {
+            if (actionMasked != MotionEvent.ACTION_UP) {
+                if (actionMasked == MotionEvent.ACTION_MOVE) {
                     val findPointerIndex = motionEvent.findPointerIndex(mActivePointerId)
                     if (findPointerIndex < 0) {
                         Log.e(TAG, "Got ACTION_MOVE event but have an invalid active pointer id.")
                         return false
                     } else if (mIsBeingDragged) {
-                        if (orientation == 2) {
+                        if (orientation == VERTICAL) {
                             val y = motionEvent.getY(findPointerIndex)
                             f = sign(y - mInitialMotionY)
                             f2 = obtainSpringBackDistance(y - mInitialMotionY, orientation)
@@ -719,8 +710,8 @@ class SpringBackLayout @JvmOverloads constructor(
                             return false
                         }
                     }
-                } else if (actionMasked != 3) {
-                    if (actionMasked == 5) {
+                } else if (actionMasked != MotionEvent.ACTION_CANCEL) {
+                    if (actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
                         val findPointerIndex2 = motionEvent.findPointerIndex(mActivePointerId)
                         if (findPointerIndex2 < 0) {
                             Log.e(
@@ -729,32 +720,32 @@ class SpringBackLayout @JvmOverloads constructor(
                             )
                             return false
                         }
-                        if (orientation == 2) {
+                        if (orientation == VERTICAL) {
                             val y2 = motionEvent.getY(findPointerIndex2) - mInitialDownY
-                            i3 = motionEvent.actionIndex
-                            if (i3 < 0) {
+                            pointerIndex = motionEvent.actionIndex
+                            if (pointerIndex < 0) {
                                 Log.e(
                                     TAG,
                                     "Got ACTION_POINTER_DOWN event but have an invalid action index."
                                 )
                                 return false
                             }
-                            mInitialDownY = motionEvent.getY(i3) - y2
+                            mInitialDownY = motionEvent.getY(pointerIndex) - y2
                             mInitialMotionY = mInitialDownY
                         } else {
                             val x2 = motionEvent.getX(findPointerIndex2) - mInitialDownX
-                            i3 = motionEvent.actionIndex
-                            if (i3 < 0) {
+                            pointerIndex = motionEvent.actionIndex
+                            if (pointerIndex < 0) {
                                 Log.e(
                                     TAG,
                                     "Got ACTION_POINTER_DOWN event but have an invalid action index."
                                 )
                                 return false
                             }
-                            mInitialDownX = motionEvent.getX(i3) - x2
+                            mInitialDownX = motionEvent.getX(pointerIndex) - x2
                             mInitialMotionX = mInitialDownX
                         }
-                        mActivePointerId = motionEvent.getPointerId(i3)
+                        mActivePointerId = motionEvent.getPointerId(pointerIndex)
                     } else if (actionMasked == 6) {
                         onSecondaryPointerUp(motionEvent)
                     }
@@ -768,7 +759,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 mIsBeingDragged = false
                 springBack(orientation)
             }
-            mActivePointerId = -1
+            mActivePointerId = MotionEvent.INVALID_POINTER_ID
             return false
         }
         mActivePointerId = motionEvent.getPointerId(0)
@@ -934,10 +925,10 @@ class SpringBackLayout @JvmOverloads constructor(
         type: Int,
         consumed: IntArray
     ) {
-        var i6 = 0
-        val isVertical = mNestedScrollAxes == 2
-        val i7 = if (isVertical) dyConsumed else dxConsumed
-        val i8 = if (isVertical) consumed[1] else consumed[0]
+        var unconsumed = 0
+        val isVertical = mNestedScrollAxes == VERTICAL
+        val deltaConsumed = if (isVertical) dyConsumed else dxConsumed
+        val oldConsumed = if (isVertical) consumed[1] else consumed[0]
         dispatchNestedScroll(
             dxConsumed,
             dyConsumed,
@@ -947,79 +938,83 @@ class SpringBackLayout @JvmOverloads constructor(
             type,
             consumed
         )
-        if (mSpringBackEnable) {
-            val i9 = (if (isVertical) consumed[1] else consumed[0]) - i8
-            val i10 = if (isVertical) dyUnconsumed - i9 else dxUnconsumed - i9
-            if (i10 != 0) {
-                i6 = i10
-            }
-            val i11 = if (isVertical) 2 else 1
-            if (i6 >= 0 || !isTargetScrollToTop(i11) || !supportTopSpringBackMode()) {
-                if (i6 > 0 && isTargetScrollToBottom(i11) && supportBottomSpringBackMode()) {
-                    if (type != 0) {
-                        val obtainMaxSpringBackDistance = obtainMaxSpringBackDistance(i11)
+        if (springBackEnable) {
+            val parentConsumed = (if (isVertical) consumed[1] else consumed[0]) - oldConsumed
+            unconsumed =
+                if (isVertical) dyUnconsumed - parentConsumed else dxUnconsumed - parentConsumed
+            val orientation = if (isVertical) VERTICAL else HORIZONTAL
+            if (unconsumed >= 0 || !isTargetScrollToTop(orientation) || !supportTopSpringBackMode()) {
+                if (unconsumed > 0 && isTargetScrollToBottom(orientation) && supportBottomSpringBackMode()) {
+                    if (type != TYPE_TOUCH) {
+                        val obtainMaxSpringBackDistance = obtainMaxSpringBackDistance(orientation)
                         if (mVelocityY != 0.0f || mVelocityX != 0.0f) {
                             mScrollByFling = true
-                            if (i7 != 0 && i6.toFloat() <= obtainMaxSpringBackDistance) {
-                                mSpringScroller.setFirstStep(i6)
+                            if (deltaConsumed != 0 && unconsumed.toFloat() <= obtainMaxSpringBackDistance) {
+                                mSpringScroller.setFirstStep(unconsumed)
                             }
-                            dispatchScrollState(2)
+                            dispatchScrollState(STATE_SETTLING)
                         } else if (mTotalScrollBottomUnconsumed == 0.0f) {
                             val f = obtainMaxSpringBackDistance - mTotalFlingUnconsumed
-                            if (consumeNestFlingCounter < 4) {
-                                if (f <= abs(i6).toFloat()) {
+                            if (consumeNestFlingCounter < MAX_FLING_CONSUME_COUNTER) {
+                                if (f <= abs(unconsumed).toFloat()) {
                                     mTotalFlingUnconsumed += f
                                     consumed[1] = (consumed[1].toFloat() + f).toInt()
                                 } else {
-                                    mTotalFlingUnconsumed += abs(i6).toFloat()
-                                    consumed[1] = consumed[1] + i10
+                                    mTotalFlingUnconsumed += abs(unconsumed).toFloat()
+                                    consumed[1] = consumed[1] + unconsumed
                                 }
-                                dispatchScrollState(2)
+                                dispatchScrollState(STATE_SETTLING)
                                 moveTarget(
-                                    -obtainSpringBackDistance(mTotalFlingUnconsumed, i11),
-                                    i11
+                                    -obtainSpringBackDistance(mTotalFlingUnconsumed, orientation),
+                                    orientation
                                 )
                                 consumeNestFlingCounter++
                             }
                         }
                     } else if (mSpringScroller.isFinished) {
-                        mTotalScrollBottomUnconsumed += abs(i6).toFloat()
-                        dispatchScrollState(1)
+                        mTotalScrollBottomUnconsumed += abs(unconsumed).toFloat()
+                        dispatchScrollState(STATE_DRAGGING)
                         moveTarget(
-                            -obtainSpringBackDistance(mTotalScrollBottomUnconsumed, i11),
-                            i11
+                            -obtainSpringBackDistance(mTotalScrollBottomUnconsumed, orientation),
+                            orientation
                         )
-                        consumed[1] = consumed[1] + i10
+                        consumed[1] = consumed[1] + unconsumed
                     }
                 }
-            } else if (type != 0) {
-                val obtainMaxSpringBackDistance2 = obtainMaxSpringBackDistance(i11)
+            } else if (type != TYPE_TOUCH) {
+                val obtainMaxSpringBackDistance2 = obtainMaxSpringBackDistance(orientation)
                 if (mVelocityY != 0.0f || mVelocityX != 0.0f) {
                     mScrollByFling = true
-                    if (i7 != 0 && (-i6).toFloat() <= obtainMaxSpringBackDistance2) {
-                        mSpringScroller.setFirstStep(i6)
+                    if (deltaConsumed != 0 && (-unconsumed).toFloat() <= obtainMaxSpringBackDistance2) {
+                        mSpringScroller.setFirstStep(unconsumed)
                     }
-                    dispatchScrollState(2)
+                    dispatchScrollState(STATE_SETTLING)
                 } else if (mTotalScrollTopUnconsumed == 0.0f) {
                     val f2 = obtainMaxSpringBackDistance2 - mTotalFlingUnconsumed
-                    if (consumeNestFlingCounter < 4) {
-                        if (f2 <= abs(i6).toFloat()) {
+                    if (consumeNestFlingCounter < MAX_FLING_CONSUME_COUNTER) {
+                        if (f2 <= abs(unconsumed).toFloat()) {
                             mTotalFlingUnconsumed += f2
                             consumed[1] = (consumed[1].toFloat() + f2).toInt()
                         } else {
-                            mTotalFlingUnconsumed += abs(i6).toFloat()
-                            consumed[1] = consumed[1] + i10
+                            mTotalFlingUnconsumed += abs(unconsumed).toFloat()
+                            consumed[1] = consumed[1] + unconsumed
                         }
-                        dispatchScrollState(2)
-                        moveTarget(obtainSpringBackDistance(mTotalFlingUnconsumed, i11), i11)
+                        dispatchScrollState(STATE_SETTLING)
+                        moveTarget(
+                            obtainSpringBackDistance(mTotalFlingUnconsumed, orientation),
+                            orientation
+                        )
                         consumeNestFlingCounter++
                     }
                 }
             } else if (mSpringScroller.isFinished) {
-                mTotalScrollTopUnconsumed += abs(i6).toFloat()
-                dispatchScrollState(1)
-                moveTarget(obtainSpringBackDistance(mTotalScrollTopUnconsumed, i11), i11)
-                consumed[1] = consumed[1] + i10
+                mTotalScrollTopUnconsumed += abs(unconsumed).toFloat()
+                dispatchScrollState(STATE_DRAGGING)
+                moveTarget(
+                    obtainSpringBackDistance(mTotalScrollTopUnconsumed, orientation),
+                    orientation
+                )
+                consumed[1] = consumed[1] + unconsumed
             }
         }
     }
@@ -1056,41 +1051,41 @@ class SpringBackLayout @JvmOverloads constructor(
             dyConsumed,
             dxUnconsumed,
             dyUnconsumed,
-            ViewCompat.TYPE_TOUCH,
+            TYPE_TOUCH,
             mNestedScrollingV2ConsumedCompat
         )
     }
 
     override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
-        if (axes and VERTICAL == 0) {
+        if (axes and mOriginScrollOrientation == 0) {
             return false
         }
-        if (mSpringBackEnable) {
+        if (springBackEnable) {
             mNestedScrollAxes = axes
-            var i3 = 2
-            val z = mNestedScrollAxes == 2
-            if (!z) {
-                i3 = 1
-            }
-            if (i3 and mOriginScrollOrientation == 0 || !onStartNestedScroll(child, child, axes)) {
+            if (axes and mOriginScrollOrientation == 0
+                || !onStartNestedScroll(child, child, axes)
+            ) {
                 return false
             }
-            val scrollY = (if (z) scrollY else scrollX).toFloat()
-            if (!(type == 0 || scrollY == 0.0f || mTarget !is NestedScrollView)) {
+            val isVertical = axes and VERTICAL != 0
+            val currentScroll = if (isVertical) scrollY else scrollX
+            if (!(type == 0 || currentScroll == 0 || mTarget !is NestedScrollView)) {
                 return false
             }
         }
+
+
         if (mNestedScrollingChildHelper.startNestedScroll(axes, type)) {
         }
         return true
     }
 
     override fun onStartNestedScroll(child: View, target: View, nestedScrollAxes: Int): Boolean {
-        return isEnabled && nestedScrollAxes and VERTICAL != 0
+        return isEnabled
     }
 
     override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
-        if (mSpringBackEnable) {
+        if (springBackEnable) {
             var orientation = VERTICAL
             val isVertical = mNestedScrollAxes == VERTICAL
             if (!isVertical) {
@@ -1133,7 +1128,7 @@ class SpringBackLayout @JvmOverloads constructor(
     }
 
     override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
-        if (mSpringBackEnable) {
+        if (springBackEnable) {
             if (mNestedScrollAxes == VERTICAL) {
                 onNestedPreScroll(dy, consumed, type)
             } else {
@@ -1145,7 +1140,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 dx - consumed[0],
                 dy - consumed[1],
                 iArr2,
-                null as IntArray?,
+                null,
                 type
             )
         ) {
@@ -1159,19 +1154,17 @@ class SpringBackLayout @JvmOverloads constructor(
         val axes = if (isVertical) VERTICAL else HORIZONTAL
         val abs = abs(if (isVertical) scrollY else scrollX)
         var f = 0.0f
-        if (type == 0) {
+        if (type == TYPE_TOUCH) {
             if (delta > 0) {
-                val f2 = mTotalScrollTopUnconsumed
-                if (f2 > 0.0f) {
-                    val f3 = delta.toFloat()
-                    if (f3 > f2) {
-                        consumeDelta(f2.toInt(), consumed, axes)
+                if (mTotalScrollTopUnconsumed > 0.0f) {
+                    if (delta > mTotalScrollTopUnconsumed) {
+                        consumeDelta(mTotalScrollTopUnconsumed.toInt(), consumed, axes)
                         mTotalScrollTopUnconsumed = 0.0f
                     } else {
-                        mTotalScrollTopUnconsumed = f2 - f3
+                        mTotalScrollTopUnconsumed -= delta
                         consumeDelta(delta, consumed, axes)
                     }
-                    dispatchScrollState(1)
+                    dispatchScrollState(STATE_DRAGGING)
                     moveTarget(obtainSpringBackDistance(mTotalScrollTopUnconsumed, axes), axes)
                     return
                 }
@@ -1195,7 +1188,7 @@ class SpringBackLayout @JvmOverloads constructor(
             }
             return
         }
-        val velocity = if (axes ==VERTICAL) mVelocityY else mVelocityX
+        val velocity = if (axes == VERTICAL) mVelocityY else mVelocityX
         if (delta > 0) {
             val f7 = mTotalScrollTopUnconsumed
             if (f7 > 0.0f) {
@@ -1211,7 +1204,7 @@ class SpringBackLayout @JvmOverloads constructor(
                         mTotalScrollTopUnconsumed = obtainTouchDistance(f, axes)
                     }
                     moveTarget(f, axes)
-                    dispatchScrollState(1)
+                    dispatchScrollState(STATE_DRAGGING)
                     return
                 }
                 if (!mScrollByFling) {
@@ -1242,7 +1235,7 @@ class SpringBackLayout @JvmOverloads constructor(
                         f = obtainSpringBackDistance2 + f10
                         mTotalScrollBottomUnconsumed = obtainTouchDistance(f, axes)
                     }
-                    dispatchScrollState(1)
+                    dispatchScrollState(STATE_DRAGGING)
                     moveTarget(-f, axes)
                     return
                 }
@@ -1287,7 +1280,7 @@ class SpringBackLayout @JvmOverloads constructor(
     override fun onStopNestedScroll(target: View, type: Int) {
         mNestedScrollingParentHelper.onStopNestedScroll(target, type)
         stopNestedScroll(type)
-        if (mSpringBackEnable) {
+        if (springBackEnable) {
             var axes = HORIZONTAL
             val isVertical = mNestedScrollAxes == VERTICAL
             if (isVertical) {
@@ -1305,7 +1298,7 @@ class SpringBackLayout @JvmOverloads constructor(
                 mNestedFlingInProgress = false
                 if (mScrollByFling) {
                     if (mSpringScroller.isFinished) {
-                        springBack(if (axes == 2) mVelocityY else mVelocityX, axes, false)
+                        springBack(if (axes == VERTICAL) mVelocityY else mVelocityX, axes, false)
                     }
                     postInvalidateOnAnimation()
                     return
@@ -1478,8 +1471,6 @@ class SpringBackLayout @JvmOverloads constructor(
 
     companion object {
         const val ANGLE = 4
-
-
         private const val INVALID_ID = -1
         private const val INVALID_POINTER = -1
         private const val MAX_FLING_CONSUME_COUNTER = 4
@@ -1489,7 +1480,6 @@ class SpringBackLayout @JvmOverloads constructor(
         const val STATE_IDLE = 0
         const val STATE_SETTLING = 2
         private const val TAG = "SpringBackLayout"
-
         private const val VELOCITY_THRESHOLD = 2000
 
     }

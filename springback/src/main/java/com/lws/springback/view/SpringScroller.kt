@@ -48,9 +48,9 @@ class SpringScroller {
         mOriginVelocity = velocity.toDouble()
         mVelocity = mOriginVelocity
         mSpringOperator = if (abs(mVelocity) <= 5000.0 || z) {
-            SpringOperator(1.0f, 0.4f)
+            SpringOperator(VALUE_THRESHOLD, 0.4f)
         } else {
-            SpringOperator(1.0f, 0.55f)
+            SpringOperator(VALUE_THRESHOLD, 0.55f)
         }
         mOrientation = orientation
         mStartTime = AnimationUtils.currentAnimationTimeMillis()
@@ -78,7 +78,7 @@ class SpringScroller {
             mCurrentTime = AnimationUtils.currentAnimationTimeMillis()
             var min = ((mCurrentTime - mStartTime).toFloat() / 1000.0f).coerceAtMost(MAX_DELTA_TIME)
             if (min == 0.0f) {
-                min = 0.016f
+                min = MAX_DELTA_TIME
             }
             mStartTime = mCurrentTime
             if (mOrientation == 2) {
