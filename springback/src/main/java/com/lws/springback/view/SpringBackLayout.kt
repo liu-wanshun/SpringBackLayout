@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ListView
 import androidx.core.view.NestedScrollingChild3
-import androidx.core.view.NestedScrollingChildHelper
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat.TYPE_TOUCH
@@ -29,7 +28,7 @@ import androidx.core.view.ViewCompat.SCROLL_AXIS_VERTICAL as VERTICAL
 class SpringBackLayout @JvmOverloads constructor(
     context: Context,
     attributeSet: AttributeSet? = null
-) : ViewGroup(context, attributeSet), NestedScrollingParent3, NestedScrollingChild3,
+) : ViewGroup(context, attributeSet), NestedScrollingParent3,
     NestedCurrentFling {
     private var consumeNestFlingCounter: Int = 0
     private var mActivePointerId: Int = MotionEvent.INVALID_POINTER_ID
@@ -42,8 +41,6 @@ class SpringBackLayout @JvmOverloads constructor(
     private var mNestedFlingInProgress = false
     private var mNestedScrollAxes = 0
     private var mNestedScrollInProgress = false
-    private val mNestedScrollingChildHelper: NestedScrollingChildHelper =
-        NestedScrollingChildHelper(this)
     private val mNestedScrollingParentHelper: NestedScrollingParentHelper =
         NestedScrollingParentHelper(this)
     private val mNestedScrollingV2ConsumedCompat: IntArray = IntArray(2)
@@ -89,7 +86,6 @@ class SpringBackLayout @JvmOverloads constructor(
             obtainStyledAttributes.getInt(R.styleable.SpringBackLayout_springBackMode, 3)
         obtainStyledAttributes.recycle()
         mHelper = SpringBackLayoutHelper(this, mOriginScrollOrientation)
-        isNestedScrollingEnabled = true
         val displayMetrics = DisplayMetrics()
         (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.getMetrics(
             displayMetrics
@@ -929,15 +925,7 @@ class SpringBackLayout @JvmOverloads constructor(
         val isVertical = mNestedScrollAxes == VERTICAL
         val deltaConsumed = if (isVertical) dyConsumed else dxConsumed
         val oldConsumed = if (isVertical) consumed[1] else consumed[0]
-        dispatchNestedScroll(
-            dxConsumed,
-            dyConsumed,
-            dxUnconsumed,
-            dyUnconsumed,
-            mParentOffsetInWindow,
-            type,
-            consumed
-        )
+
         if (springBackEnable) {
             val parentConsumed = (if (isVertical) consumed[1] else consumed[0]) - oldConsumed
             unconsumed =
@@ -1073,10 +1061,6 @@ class SpringBackLayout @JvmOverloads constructor(
                 return false
             }
         }
-
-
-        if (mNestedScrollingChildHelper.startNestedScroll(axes, type)) {
-        }
         return true
     }
 
@@ -1124,7 +1108,6 @@ class SpringBackLayout @JvmOverloads constructor(
 
     override fun onNestedScrollAccepted(child: View, target: View, axes: Int) {
         mNestedScrollingParentHelper.onNestedScrollAccepted(child, target, axes)
-        startNestedScroll(axes and VERTICAL)
     }
 
     override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
@@ -1134,18 +1117,6 @@ class SpringBackLayout @JvmOverloads constructor(
             } else {
                 onNestedPreScroll(dx, consumed, type)
             }
-        }
-        val iArr2 = mParentScrollConsumed
-        if (dispatchNestedPreScroll(
-                dx - consumed[0],
-                dy - consumed[1],
-                iArr2,
-                null,
-                type
-            )
-        ) {
-            consumed[0] = consumed[0] + iArr2[0]
-            consumed[1] = consumed[1] + iArr2[1]
         }
     }
 
@@ -1269,17 +1240,8 @@ class SpringBackLayout @JvmOverloads constructor(
         }
     }
 
-    override fun setNestedScrollingEnabled(enabled: Boolean) {
-        mNestedScrollingChildHelper.isNestedScrollingEnabled = enabled
-    }
-
-    override fun isNestedScrollingEnabled(): Boolean {
-        return mNestedScrollingChildHelper.isNestedScrollingEnabled
-    }
-
     override fun onStopNestedScroll(target: View, type: Int) {
         mNestedScrollingParentHelper.onStopNestedScroll(target, type)
-        stopNestedScroll(type)
         if (springBackEnable) {
             var axes = HORIZONTAL
             val isVertical = mNestedScrollAxes == VERTICAL
@@ -1308,112 +1270,21 @@ class SpringBackLayout @JvmOverloads constructor(
         }
     }
 
-    override fun stopNestedScroll() {
-        mNestedScrollingChildHelper.stopNestedScroll()
-    }
-
     override fun onNestedFling(
         target: View,
         velocityX: Float,
         velocityY: Float,
         consumed: Boolean
     ): Boolean {
-        return dispatchNestedFling(velocityX, velocityY, consumed)
+//        if (!consumed) {
+//            //todo 消费
+//            return true
+//        }
+        return false
     }
 
     override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
-        return dispatchNestedPreFling(velocityX, velocityY)
-    }
-
-    override fun dispatchNestedScroll(
-        dxConsumed: Int,
-        dyConsumed: Int,
-        dxUnconsumed: Int,
-        dyUnconsumed: Int,
-        offsetInWindow: IntArray?,
-        type: Int,
-        consumed: IntArray
-    ) {
-        mNestedScrollingChildHelper.dispatchNestedScroll(
-            dxConsumed,
-            dyConsumed,
-            dxUnconsumed,
-            dyUnconsumed,
-            offsetInWindow,
-            type,
-            consumed
-        )
-    }
-
-    override fun startNestedScroll(axes: Int, type: Int): Boolean {
-        return mNestedScrollingChildHelper.startNestedScroll(axes, type)
-    }
-
-    override fun startNestedScroll(axes: Int): Boolean {
-        return mNestedScrollingChildHelper.startNestedScroll(axes)
-    }
-
-    override fun stopNestedScroll(type: Int) {
-        mNestedScrollingChildHelper.stopNestedScroll(type)
-    }
-
-    override fun hasNestedScrollingParent(type: Int): Boolean {
-        return mNestedScrollingChildHelper.hasNestedScrollingParent(type)
-    }
-
-    override fun dispatchNestedScroll(
-        dxConsumed: Int,
-        dyConsumed: Int,
-        dxUnconsumed: Int,
-        dyUnconsumed: Int,
-        offsetInWindow: IntArray?,
-        type: Int
-    ): Boolean {
-        return mNestedScrollingChildHelper.dispatchNestedScroll(
-            dxConsumed,
-            dyConsumed,
-            dxUnconsumed,
-            dyUnconsumed,
-            offsetInWindow,
-            type
-        )
-    }
-
-    override fun dispatchNestedPreScroll(
-        dx: Int,
-        dy: Int,
-        consumed: IntArray?,
-        offsetInWindow: IntArray?,
-        type: Int
-    ): Boolean {
-        return mNestedScrollingChildHelper.dispatchNestedPreScroll(
-            dx,
-            dy,
-            consumed,
-            offsetInWindow,
-            type
-        )
-    }
-
-    override fun dispatchNestedPreFling(velocityX: Float, velocityY: Float): Boolean {
-        return mNestedScrollingChildHelper.dispatchNestedPreFling(velocityX, velocityY)
-    }
-
-    override fun dispatchNestedFling(
-        velocityX: Float,
-        velocityY: Float,
-        consumed: Boolean
-    ): Boolean {
-        return mNestedScrollingChildHelper.dispatchNestedFling(velocityX, velocityY, consumed)
-    }
-
-    override fun dispatchNestedPreScroll(
-        dx: Int,
-        dy: Int,
-        consumed: IntArray?,
-        offsetInWindow: IntArray?
-    ): Boolean {
-        return mNestedScrollingChildHelper.dispatchNestedPreScroll(dx, dy, consumed, offsetInWindow)
+        return false
     }
 
     fun smoothScrollTo(x: Int, y: Int) {
