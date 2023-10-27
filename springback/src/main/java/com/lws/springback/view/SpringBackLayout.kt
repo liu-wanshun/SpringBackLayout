@@ -250,7 +250,9 @@ class SpringBackLayout @JvmOverloads constructor(
 
         val dispatchTouchEvent = super.dispatchTouchEvent(motionEvent)
 
-        if (motionEvent.actionMasked == MotionEvent.ACTION_UP && mScrollState == STATE_DRAGGING) {
+        if ((motionEvent.actionMasked == MotionEvent.ACTION_UP || motionEvent.actionMasked == MotionEvent.ACTION_CANCEL)
+            && mScrollState == STATE_DRAGGING
+        ) {
             if (mOriginScrollOrientation and VERTICAL != 0) {
                 springBack(VERTICAL)
             }
